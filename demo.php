@@ -4,6 +4,8 @@ date_default_timezone_set('GMT');
 
 // This should be the path to your data directory, ending in a /.
 $dataDirPath = '/exports/CAM02/datadir0/';
+$thumbnail_real = '/var/www/cameras/Thumbnails/CAM02_'; // path and start of file name.
+$thumbnail_relative ='/cameras/Thumbnails/CAM02_';
 
 require_once 'libHikvision.php';
 
@@ -125,7 +127,7 @@ a.button{line-height:30px;padding:5px 10px}
 
 <h1>CCTV Video Archive</h1>
  <div id="LeftPanel">
-	<form method="get" action="">
+	<form method="get" action="<?php echo  $_SERVER['SCRIPT_NAME']; ?>">
 		<fieldset>
 			<div class="formField">
 			<label for="SearchBegin" style="width:30px;display:inline-block">Begin</label>
@@ -148,6 +150,7 @@ a.button{line-height:30px;padding:5px 10px}
 		foreach($segmentsByDay as $day)
 		{
 			echo '<tr><td><a href="'.
+					 $_SERVER['SCRIPT_NAME'].
 					queryString('Day',$day['start']).
 					'">'.
 					date('l j F Y', $day['start']).'</a>'.
@@ -163,30 +166,26 @@ a.button{line-height:30px;padding:5px 10px}
 <?php
 if(isset($segmentsByDay[$filterDay]))
 {	
-	
 	// Sort recordings in order of most recent.	
 	$recordings = $segmentsByDay[$filterDay]['segments'];
 	usort($recordings, function ($a, $b) {
 		return strcmp( $b['cust_startTime'], $a['cust_startTime'] );
 		});
 	
-	
 	foreach($recordings as $recording)
 	{
 		$startTime = strftime('%H:%M:%S',$recording['cust_startTime']);
-			
 		$endTime = strftime('%H:%M:%S', $recording['cust_endTime']);
 		
 		$cctv->extractThumbnail(
 			$recording['cust_fileNo'],
 			$recording['startOffset'],
-			'/var/www/cameras/Thumbnails/CAM02_'.$recording['cust_fileNo'].'_'.$recording['startOffset'].'.jpg'
+			$thumbnail_real.$recording['cust_fileNo'].'_'.$recording['startOffset'].'.jpg'
 			);
 		
 		echo '<div class="cctvImg">'.
-				
-				'<a href="?file='.$recording['cust_fileNo'].'&amp;start='.$recording['startOffset'].'&amp;end='.$recording['endOffset'].'">'.
-				'<img src="/cameras/Thumbnails/CAM02_'.$recording['cust_fileNo'].'_'.$recording['startOffset'].'.jpg" width="320" height="180"/></a>'.
+				'<a href="'. $_SERVER['SCRIPT_NAME'].'?file='.$recording['cust_fileNo'].'&amp;start='.$recording['startOffset'].'&amp;end='.$recording['endOffset'].'">'.
+				'<img src="'.$thumbnail_relative.$recording['cust_fileNo'].'_'.$recording['startOffset'].'.jpg" width="320" height="180"/></a>'.
 				'<p>'.$startTime.' to '. $endTime .'</p>'.
 				'</div>';
 	}
@@ -196,8 +195,7 @@ else
 	echo '<p>No recordings to display</p>';
 }
 ?>
-	<div style="clear:both;">&nbsp;</div>
+<div style="clear:both;">&nbsp;</div>
 </div>
-
 </body>
 </html>
