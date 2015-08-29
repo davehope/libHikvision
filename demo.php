@@ -3,11 +3,12 @@ error_reporting(E_ALL);
 date_default_timezone_set('GMT');
 
 // This should be the path to your data directory, ending in a /.
-$dataDirPath = '/exports/CAM02/datadir0/';
 $thumbnail_real = '/var/www/cameras/Thumbnails/CAM02_'; // path and start of file name.
 $thumbnail_relative ='/cameras/Thumbnails/CAM02_';
 
 require_once 'libHikvision.php';
+
+$cfgCCTVPaths = array('/exports/CAM02/datadir0/','/exports/CAM02/datadir1');
 
 /**
 * Name: Preserve and update/rebuild query string<br>
@@ -31,19 +32,21 @@ function queryString($str,$val)
 	return $queryString;
 }
 
-$cctv = new hikvisionCCTV( $dataDirPath );
+$cctv = new hikvisionCCTV( $cfgCCTVPaths );
 
 //
 // Check query string to see if we need to download a file.
 if(
+	isset($_GET['datadir']) &&
 	isset($_GET['file']) &&
 	isset($_GET['start']) &&
 	isset($_GET['end']) &&
+	is_numeric($_GET['datadir']) &&
 	is_numeric($_GET['file']) &&
 	is_numeric($_GET['start']) &&
 	is_numeric($_GET['end']) )
 {
-	$cctv->getSegmentClipHTTP($_GET['file'],$_GET['start'],$_GET['end']);
+	$cctv->getSegmentClipHTTP($_GET['datadir'],$_GET['file'],$_GET['start'],$_GET['end']);
 	exit();
 }
 
@@ -178,14 +181,15 @@ if(isset($segmentsByDay[$filterDay]))
 		$endTime = strftime('%H:%M:%S', $recording['cust_endTime']);
 		
 		$cctv->extractThumbnail(
-			$recording['cust_fileNo'],
+			$recording['cust_dataDirNum'],
+			$recording['cust_fileNum'],
 			$recording['startOffset'],
-			$thumbnail_real.$recording['cust_fileNo'].'_'.$recording['startOffset'].'.jpg'
+			$thumbnail_real.$recording['cust_dataDirNum'].'_'.$recording['cust_fileNum'].'_'.$recording['startOffset'].'.jpg'
 			);
 		
 		echo '<div class="cctvImg">'.
-				'<a href="'. $_SERVER['SCRIPT_NAME'].'?file='.$recording['cust_fileNo'].'&amp;start='.$recording['startOffset'].'&amp;end='.$recording['endOffset'].'">'.
-				'<img src="'.$thumbnail_relative.$recording['cust_fileNo'].'_'.$recording['startOffset'].'.jpg" width="320" height="180"/></a>'.
+				'<a href="'. $_SERVER['SCRIPT_NAME'].'?datadir='.$recording['cust_dataDirNum'].'&amp;file='.$recording['cust_fileNum'].'&amp;start='.$recording['startOffset'].'&amp;end='.$recording['endOffset'].'">'.
+				'<img src="'.$thumbnail_relative.$recording['cust_dataDirNum'].'_'.$recording['cust_fileNum'].'_'.$recording['startOffset'].'.jpg" width="320" height="180"/></a>'.
 				'<p>'.$startTime.' to '. $endTime .'</p>'.
 				'</div>';
 	}

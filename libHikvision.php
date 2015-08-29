@@ -1,6 +1,6 @@
 <?php
 /*
- * Hikvision CCTV Class, version 1.0
+ * Hikvision CCTV Class, version 1.1
  * This class will parse a Hikvision index file (e.g. index00.bin) tha
  * typically gets stored on external media such as an SD card or NFS share.
  *
@@ -20,28 +20,53 @@ define("SEGMENT_LEN", 80);	// Length of the segment struct in bytes.
 
 class hikvisionCCTV
 {
-	private $indexFile;
-	private $path;
+	private $configuration;
 
 	///
-	/// __construct( Path to data directory )
+	/// __construct( Array of paths to datadir's' )
 	/// Created a new instance of this class. The path MUST end in a '/'.
 	///
-	public function __construct( $_path )
+	public function __construct( $_paths )
 	{
-		$this->path = $_path;
-		$this->indexFile = $this->pathJoin($_path ,'index00.bin');
+		// Create a configuration array for each datadir we are going to work
+		// with.
+		$this->configuration = array();
+		foreach($_paths as $path)
+		{
+			$tmp = array(
+				'path' => $path,
+				'indexFile' => $this->pathJoin($path ,'index00.bin')
+				);
+			$this->configuration[] = $tmp;
+		}
 	}
 
 
 	///
-	/// getFileHeader()
+	/// getDataDirNum( ath to Index File )
+	/// Return the index to the specified index File in our configuration array
+	///
+	private function getDataDirNum( $_index )
+	{
+		$pos = 0;
+		foreach($this->configuration as $dataDir)
+		{
+			if( $dataDir['indexFile'] == $_index )
+				return $pos;
+
+			$pos++;
+		}
+	}
+
+
+	///
+	/// getFileHeaderForIndexFile( Path to Index File )
 	/// Return array containing the file header from Hikvision "index00.bin".
 	/// Based on the work of Alex Ozerov. (https://github.com/aloz77/hiktools/)
 	///
-	public function getFileHeader()
+	private function getFileHeaderForIndexFile( $_indexFile )
 	{
-		$fh = fopen($this->indexFile, 'rb');
+		$fh = fopen($_indexFile, 'rb');
 
 		// Read length of file header.
 		$data = fread($fh, HEADER_LEN);
@@ -60,17 +85,17 @@ class hikvisionCCTV
 
 
 	///
-	/// getFiles()
+	/// getFilesForIndexFile( Path to Index File )
 	/// Return list of files. One video file may contain multiple segments,
 	/// i.e. multiple events - motion detection, etc.
 	/// Currently unused as it's more useful to return segments. 
 	/// Based on the work of Alex Ozerov. (https://github.com/aloz77/hiktools/)
 	///
-	public function getFiles()
+	private function getFilesForIndexFile( $_indexFile )
 	{
 		$results = array();
-		$header = $this->getFileHeader();
-		$fh = fopen($this->indexFile, 'rb');
+		$header = $this->getFileHeaderForIndexFile($_indexFile);
+		$fh = fopen($_indexFile, 'rb');
 
 		// Seek to end of header.
 		fread($fh, HEADER_LEN);
@@ -104,30 +129,54 @@ class hikvisionCCTV
 		return $results;
 	}
 
-
+	
 	///
 	/// getSegments()
+	/// Returns an array of files and segments fror Hikvision data directories
+	/// by calling getSegmentsForIndexFile().
+	///
+	public function getSegments()
+	{
+		$results = array();
+		// Iterate over all datadir's
+		foreach($this->configuration as $dataDir)
+		{
+			// Get the segments for the index file of this datadir.
+			$segments = $this->getSegmentsForIndexFile($dataDir['indexFile']);
+			
+			// Iterate over this datadir's segments and append the segment to
+			// the results array.
+			foreach($segments as $segment)
+			{
+				$results[] = $segment;
+			}
+		}
+		return $results;
+	}
+
+
+	///
+	/// getSegmentsForIndexFile( Path to Index File )
 	/// Returns an array of files and segments from a Hikvision "index00.bin"
 	/// file.
 	/// Based on the work of Alex Ozerov. (https://github.com/aloz77/hiktools/)
 	///
-	public function getSegments()
+	private function getSegmentsForIndexFile( $_indexFile )
 	{
 		// Maximum number of segments possible per recording.
 		$maxSegments = 256;	
 
 		$results = array();
-		$fh = fopen($this->indexFile, 'rb');
+		$fh = fopen($_indexFile, 'rb');
 
 		// Seek to the end of the header and recordings.
-		$header = $this->getFileHeader();
+		$header = $this->getFileHeaderForIndexFile($_indexFile);
 		$offset = HEADER_LEN + ($header['avFiles'] * FILE_LEN);
 		fread($fh, $offset);
 
 		// Iterate over the number of recordings we have.
 		for($i=0;$i<$header['avFiles'];$i++)
 		{
-			$results[$i] = array();
 			for ($j=0;$j<$maxSegments;$j++)
 			{
 				// Read length of the segment header.
@@ -155,10 +204,18 @@ class hikvisionCCTV
 					'C4infoStartOffset/'.
 					'C4infoEndOffset'
 					,$data);
+				
+				$startTime = $this->convertTimestampTo32($tmp['startTime']);
+				$endTime = $this->convertTimestampTo32($tmp['endTime']);
+				$tmp['cust_startTime'] = $startTime;
+				$tmp['cust_endTime'] = $endTime;
+				$tmp['cust_fileNum'] = $i;
+				$tmp['cust_dataDirNum'] = $this->getDataDirNum($_indexFile);
+				$tmp['cust_indexFile'] = $_indexFile;
 		
 				// Ignore empty and those which are still recording.	
 				if($tmp['type'] != 0 && $tmp['endTime'] != 0)
-					array_push($results[$i], $tmp);
+					array_push($results, $tmp);
 			}
 		}
 		fclose($fh);
@@ -173,26 +230,15 @@ class hikvisionCCTV
 	public function getSegmentsBetweenDates($_start , $_end)
 	{
 		$results = array();
-		
-		// Iterate over all files.
-		$current_file = 0;
-		foreach ($this->getSegments() as $file)
+		$segments = $this->getSegments();
+
+		// Iterate over segments associated with this recording.
+		foreach($segments as $segment)
 		{
-			// Iterate over segments associated with this recording.
-			foreach($file as $segment)
-			{
-				$startTime = $this->convertTimestampTo32($segment['startTime']);
-				$endTime = $this->convertTimestampTo32($segment['endTime']);
-				$segment['cust_fileNo'] = $current_file;
-				$segment['cust_startTime'] = $startTime;
-				$segment['cust_endTime'] = $endTime;
-				// Check if the segment began recording in the specified window
-				if( $_start < $startTime && $_end > $endTime )
-					array_push($results, $segment);
-			}
-			$current_file++;
+			// Check if the segment began recording in the specified window
+			if( $_start < $segment['cust_startTime'] && $_end > $segment['cust_endTime'] )
+				array_push($results, $segment);
 		}
-		
 		return $results;
 	}
 	
@@ -257,14 +303,17 @@ class hikvisionCCTV
 	
 	
 	///
-	/// getSegmentClipHTTP( File Number , Start Offset, End Offset )
+	/// getSegmentClipHTTP( Index File, File Number , Start Offset, End Offset )
 	/// Extracts a recording segment from the specified file, chunking the
 	/// request to 4kb at a time to conserve memory.
 	///
-	public function getSegmentClipHTTP( $_file , $_startOffset, $_endOffset )
+	public function getSegmentClipHTTP( $_dataDirNum, $_file , $_startOffset, $_endOffset )
 	{
 		$file = $this->getFileName($_file);
-		$path = $this->pathJoin($this->path , $file);
+		$path = $this->pathJoin(
+			$this->configuration[$_dataDirNum]['path'],
+			$file
+		);
 		
 		$fh = fopen( $path, 'rb');
 		if($fh == false)
@@ -299,12 +348,15 @@ class hikvisionCCTV
 	
 	
 	///
-	/// extractThumbnail(File Number, offset, Path to output file)
+	/// extractThumbnail(Data directory #, File Number, offset, Path to output file)
 	/// Extracts a thumbnail from a recording file based on the offset provided
 	///
-	public function extractThumbnail($_file, $_offset, $_output)
+	public function extractThumbnail($_dataDirNum, $_file, $_offset, $_output)
 	{
-		$path = $this->pathJoin($this->path , $this->getFileName($_file));
+		$path = $this->pathJoin(
+			$this->configuration[$_dataDirNum]['path'],
+			$this->getFileName($_file)
+		);
 		
 		if(!file_exists($_output))
 		{
