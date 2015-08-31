@@ -17,6 +17,7 @@ ini_set('display_errors', 1);
 define("HEADER_LEN", 1280);	// Length of the header struct in bytes.
 define("FILE_LEN", 32);		// Length of the file struct in bytes.
 define("SEGMENT_LEN", 80);	// Length of the segment struct in bytes.
+define("NASINFO_LEN", 68);	// Length of info.bin used on NAS storage.
 
 class hikvisionCCTV
 {
@@ -28,10 +29,31 @@ class hikvisionCCTV
 	///
 	public function __construct( $_paths )
 	{
+		$paths = $_paths;
+		
 		// Create a configuration array for each datadir we are going to work
 		// with.
 		$this->configuration = array();
-		foreach($_paths as $path)
+		
+		// If a single path is provided check to see if it' an NAS info file.
+		if(!is_array($_paths) && pathinfo($_paths, PATHINFO_BASENAME) == "info.bin")
+		{
+			// Parse info.bin and populate our configuration array with the 
+			// details. 
+			$dataDirCount = $this->getNASInfo($_paths)['DataDirs'];
+			$pathRoot = pathinfo($_paths, PATHINFO_DIRNAME );
+			$paths = array();
+			
+			// Add list of datadir's to local paths array for iteration.
+			for($i=0; $i<$dataDirCount;$i++)
+			{
+				$paths[] = $this->pathJoin($pathRoot, 'datadir'.$i);
+			}
+		}
+		
+		// Individual paths have been provided, add them to our configutation
+		// array.
+		foreach($paths as $path)
 		{
 			$tmp = array(
 				'path' => $path,
@@ -40,10 +62,31 @@ class hikvisionCCTV
 			$this->configuration[] = $tmp;
 		}
 	}
-
-
+	
+	
 	///
-	/// getDataDirNum( ath to Index File )
+	/// getNASInfo( Path to NAS info.bin )
+	///
+	public function getNASInfo( $_infoFile )
+	{
+		$fh = fopen($_infoFile, 'rb');
+	
+		// Read length of file header.
+		$data = fread($fh, NASINFO_LEN);
+		$tmp = unpack(
+			'a48serialNumber/'. // SERIALNO_LEN
+			'H12MACAddr/'.		// MACADDR_LEN
+			'C2byRes/'.
+			'If_bsize/'.		// create_info_file (f_bsize)
+			'If_blocks/'.		// create_info_file (f_blocks)
+			'IDataDirs', $data);
+		fclose($fh);
+		return $tmp;
+	}
+	
+	
+	///
+	/// getDataDirNum( Path to Index File )
 	/// Return the index to the specified index File in our configuration array
 	///
 	private function getDataDirNum( $_index )

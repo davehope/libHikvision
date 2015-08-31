@@ -8,7 +8,8 @@ $thumbnail_relative ='/cameras/Thumbnails/CAM02_';
 
 require_once 'libHikvision.php';
 
-$cfgCCTVPaths = array('/exports/CAM02/datadir0/','/exports/CAM02/datadir1');
+//$cfgCCTVPaths = array('/exports/CAM02/datadir0/','/exports/CAM02/datadir1');
+$cfgCCTVPaths = "/exports/CAM02/info.bin";
 
 /**
 * Name: Preserve and update/rebuild query string<br>
