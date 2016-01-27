@@ -380,6 +380,56 @@ class hikvisionCCTV
 	
 	
 	///
+	/// getSegmentClipHTTPstream( Index File, File Number , Start Offset, End Offset )
+	///
+	public function getSegmentClipHTTPstream( $_dataDirNum, $_file , $_startOffset, $_endOffset )
+	{
+		$filename = $this->getFileName($_file);
+		$pathOriginal = $this->pathJoin(
+			$this->configuration[$_dataDirNum]['path'],
+			$filename
+		);
+		$pathCropped = 'test.mp4';
+		$pathStreamed = 'test2.mp4';
+		
+		$file = fopen($pathOriginal, 'rb');
+		$cur=$_startOffset;
+		fseek($file,$_startOffset,0);
+		while(!feof($file) && $cur<$_endOffset){
+			file_put_contents($pathCropped, fread($file,min(1024*16,$_endOffset-$cur)), FILE_APPEND);
+			$cur+=1024*16;
+		}
+		fclose($file);
+
+		$cmd = "ffmpeg -i $pathCropped -y -vcodec libx264 -vf scale=-2:720 -preset fast -pix_fmt yuv420p $pathStreamed";
+		passthru($cmd);
+		unlink($pathCropped);
+
+		$file2 = fopen($pathStreamed, 'rb');
+		$size = filesize($pathStreamed);
+		$cur=0;
+		$start=0;
+		$end=$size-1;
+		header("Content-Type: video/mp4");
+		header("Content-Length: ".$size);
+
+		fseek($file2, $start);
+		// $buffer = 512;
+		// while(!feof($file2) && ($p = ftell($file2)) <= $end) {
+		// 	if ($p + $buffer > $end) {
+		// 		$buffer = $end - $p + 1;
+		// 	}
+		// 	set_time_limit(0);
+		// 	echo fread($file2, $buffer);
+		// 	flush();
+		// }
+		echo fread($file2, $size);
+		fclose($file2);
+		unlink($pathStreamed);
+	}
+
+	
+	///
 	/// getFileName( File Number )
 	/// Returns the full path to the specified recording file.
 	///
