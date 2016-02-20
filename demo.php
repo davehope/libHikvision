@@ -5,11 +5,12 @@ date_default_timezone_set('GMT');
 // This should be the path to your data directory, ending in a /.
 $thumbnail_real = '/var/www/cameras/Thumbnails/CAM02_'; // path and start of file name.
 $thumbnail_relative ='/cameras/Thumbnails/CAM02_';
+$tmpPath = '/var/www/cameras/temp/'; # Path where temporary mp4 files can go
 
 require_once 'libHikvision.php';
 
 //$cfgCCTVPaths = array('/exports/CAM02/datadir0/','/exports/CAM02/datadir1');
-$cfgCCTVPaths = "/exports/CAM02/info.bin";
+$cfgCCTVPaths = "/mnt/cam02/info.bin";
 
 /**
 * Name: Preserve and update/rebuild query string<br>
@@ -47,7 +48,11 @@ if(
 	is_numeric($_GET['start']) &&
 	is_numeric($_GET['end']) )
 {
-	$cctv->getSegmentClipHTTP($_GET['datadir'],$_GET['file'],$_GET['start'],$_GET['end']);
+	$cctv->streamFileToBrowser(
+		$cctv->extractSegmentMP4(
+			$_GET['datadir'],$_GET['file'],$_GET['start'],$_GET['end'],$tmpPath
+		)
+	);
 	exit();
 }
 
@@ -100,7 +105,6 @@ foreach($segments as $segment)
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
 </head>
 <body>
-
 <style type="text/css">
 body{font-family:'Bitstream Vera Sans','DejaVu Sans',Tahoma,sans-serif;font-size:13px;background-color:#e8e8e8}
 .visualLabel{float:right;background-color:#e8e8e8;border-radius:10px;padding:0.3em;font-size:x-small}
@@ -128,6 +132,15 @@ a.button{line-height:30px;padding:5px 10px}
 #LeftPanel{width:210px;float:left;margin-right: 15px}
 #RightPanel{position:relative;margin-left:210px;padding-left:20px}
 </style>
+<script>
+// playVideoWindow(0,88,176652800,221621788,'/cameras/Thumbnails/CAM02_0_88_176652800.jpg')
+function playVideoWindow( _cust_dataDirNum, _cust_fileNum, _startOffset, _endOffset ,_posterUrl )
+{
+	var newWindow = window.open("", "_blank", "toolbar=no,scrollbar=no,resizable=yes,width=720,height=410");
+	newWindow.document.write("<!DOCTYPE html><html><body style=\"margin:0\"><video controls width=\"100%\" poster=\""+ _posterUrl + "\">" +
+		"<source src=\"?datadir="+ _cust_dataDirNum +"&amp;file="+_cust_fileNum+"&amp;start="+_startOffset+"&amp;end="+_endOffset+"\" type=\"video/mp4\"></video></body></html>");
+}
+</script>
 
 <h1>CCTV Video Archive</h1>
  <div id="LeftPanel">
@@ -188,9 +201,10 @@ if(isset($segmentsByDay[$filterDay]))
 			$thumbnail_real.$recording['cust_dataDirNum'].'_'.$recording['cust_fileNum'].'_'.$recording['startOffset'].'.jpg'
 			);
 		
+		$thumbnail = $thumbnail_relative.$recording['cust_dataDirNum'].'_'.$recording['cust_fileNum'].'_'.$recording['startOffset'].'.jpg';
 		echo '<div class="cctvImg">'.
-				'<a href="'. $_SERVER['SCRIPT_NAME'].'?datadir='.$recording['cust_dataDirNum'].'&amp;file='.$recording['cust_fileNum'].'&amp;start='.$recording['startOffset'].'&amp;end='.$recording['endOffset'].'">'.
-				'<img src="'.$thumbnail_relative.$recording['cust_dataDirNum'].'_'.$recording['cust_fileNum'].'_'.$recording['startOffset'].'.jpg" width="320" height="180"/></a>'.
+				'<a href="#" onclick="playVideoWindow('.$recording['cust_dataDirNum'].','.$recording['cust_fileNum'].','.$recording['startOffset'].','.$recording['endOffset'].',\''.$thumbnail.'\')">'.
+				'<img src="'.$thumbnail.'" width="320" height="180"/></a>'.
 				'<p>'.$startTime.' to '. $endTime .'</p>'.
 				'</div>';
 	}
