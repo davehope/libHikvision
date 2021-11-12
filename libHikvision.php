@@ -55,9 +55,17 @@ class hikvisionCCTV
 		// array.
 		foreach($paths as $path)
 		{
+			$indexFile = $this->pathJoin($path ,'index00.bin');
+			$indexType = 'bin';
+			if(!file_exists($indexFile))
+			{
+				$indexFile = $this->pathJoin($path ,'record_db_index00');
+				$indexType = 'sqlite';
+			}
 			$tmp = array(
 				'path' => $path,
-				'indexFile' => $this->pathJoin($path ,'index00.bin')
+				'indexFile' => $indexFile,
+				'indexType' => $indexType
 				);
 			$this->configuration[] = $tmp;
 		}
@@ -185,8 +193,14 @@ class hikvisionCCTV
 		foreach($this->configuration as $dataDir)
 		{
 			// Get the segments for the index file of this datadir.
-			$segments = $this->getSegmentsForIndexFile($dataDir['indexFile']);
-			
+			if('bin' == $dataDir['indexType'])
+			{
+				$segments = $this->getSegmentsForIndexFileBin($dataDir['indexFile']);
+			}
+			elseif('sqlite' == $dataDir['indexType'])
+			{
+				$segments = $this->getSegmentsForIndexFileSqlite($dataDir['indexFile']);
+			}
 			// Iterate over this datadir's segments and append the segment to
 			// the results array.
 			foreach($segments as $segment)
@@ -197,14 +211,35 @@ class hikvisionCCTV
 		return $results;
 	}
 
+	///
+	/// getSegmentsForIndexFileSqlite( Path to Index File )
+	/// Returns an array of files and segments from a Hikvision "record_db_index00"
+	/// file.
+	///
+	private function getSegmentsForIndexFileSqlite( $_indexFile )
+	{
+		$results = array();
+
+		$db = new PDO('sqlite:' . $_indexFile );
+		$queryStr = 'SELECT file_no AS cust_fileNum, start_offset AS startOffset, end_offset AS endOffset, start_time_tv_sec AS cust_startTime, end_time_tv_sec AS cust_endTime FROM record_segment_idx_tb WHERE record_type != 0';
+		$dbRows = $db->query( $queryStr );
+		foreach($dbRows as $dbRow)
+		{
+			$dbRow['cust_dataDirNum'] = $this->getDataDirNum($_indexFile);
+			$dbRow['cust_indexFile'] = $_indexFile;
+			array_push($results, $dbRow);
+		}
+		return $results;
+	}
+
 
 	///
-	/// getSegmentsForIndexFile( Path to Index File )
+	/// getSegmentsForIndexFileBin( Path to Index File )
 	/// Returns an array of files and segments from a Hikvision "index00.bin"
 	/// file.
 	/// Based on the work of Alex Ozerov. (https://github.com/aloz77/hiktools/)
 	///
-	private function getSegmentsForIndexFile( $_indexFile )
+	private function getSegmentsForIndexFileBin( $_indexFile )
 	{
 		// Maximum number of segments possible per recording.
 		$maxSegments = 256;	
@@ -417,7 +452,7 @@ class hikvisionCCTV
 		fclose($fh);
 		
 		// Extract footage and pass to avconv. 
-		$cmd = 'avconv -i '.$pathExtracted.' -threads auto -c:v copy -c:a none '.$pathTranscoded;
+		$cmd = 'ffmpeg -i '.$pathExtracted.' -threads auto -c:v copy -c:a none '.$pathTranscoded;
 		system($cmd);
 		
 		// Transcode complete. Remove original file.
@@ -499,7 +534,7 @@ class hikvisionCCTV
 				exit;
 			}
 		}
-		@flose($fh);
+		@fclose($fh);
 		exit;
 	}
 
@@ -528,7 +563,7 @@ class hikvisionCCTV
 		
 		if(!file_exists($_output))
 		{
-			$cmd = 'dd if='.$path.' skip='.$_offset.' ibs=1 | avconv -i pipe:0 -vframes 1 -an '.$_output.' >/dev/null 2>&1';
+			$cmd = 'dd if='.$path.' skip='.$_offset.' ibs=1 | ffmpeg -i pipe:0 -vframes 1 -an '.$_output.' >/dev/null 2>&1';
 			system($cmd);
 		}
 	}
