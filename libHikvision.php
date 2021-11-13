@@ -221,7 +221,7 @@ class hikvisionCCTV
 		$results = array();
 
 		$db = new PDO('sqlite:' . $_indexFile );
-		$queryStr = 'SELECT file_no AS cust_fileNum, start_offset AS startOffset, end_offset AS endOffset, start_time_tv_sec AS cust_startTime, end_time_tv_sec AS cust_endTime FROM record_segment_idx_tb WHERE record_type != 0';
+		$queryStr = 'SELECT file_no AS cust_fileNum, start_offset AS startOffset, end_offset AS endOffset, start_time_tv_sec AS cust_startTime, end_time_tv_sec AS cust_endTime FROM record_segment_idx_tb WHERE record_type != 0 AND end_offset != 0';
 		$dbRows = $db->query( $queryStr );
 		foreach($dbRows as $dbRow)
 		{
@@ -564,8 +564,19 @@ class hikvisionCCTV
 		
 		if(!file_exists($_output))
 		{
-			$cmd = 'dd if='.$path.' skip='.$_offset.' ibs=1 | ffmpeg -i pipe:0 -vframes 1 -an '.$_output.' >/dev/null 2>&1';
+			$fh = fopen( $path, 'rb');
+			if($fh == false)
+				die("Unable to open $path");
+
+			if( fseek($fh, $_offset) === false )
+				die("Unable to seek to position $_offset in $path");
+
+			// Extract 1MB of footage. Assumed this will be enough to get the first frame
+			file_put_contents($_output.'.tmp', fread($fh, 1000000));
+			fclose($fh);
+			$cmd = 'ffmpeg -i '.$_output.'.tmp -vframes 1 -an '.$_output.' >/dev/null 2>&1';
 			system($cmd);
+			unlink($_output.'.tmp');
 		}
 	}
 	
