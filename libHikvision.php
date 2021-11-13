@@ -229,6 +229,7 @@ class hikvisionCCTV
 			$dbRow['cust_indexFile'] = $_indexFile;
 			array_push($results, $dbRow);
 		}
+		$db = null;
 		return $results;
 	}
 
